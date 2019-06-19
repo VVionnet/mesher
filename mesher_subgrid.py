@@ -28,6 +28,7 @@ import imp
 import vtk
 import warnings
 import pdb
+from scipy import stats
 
 gdal.UseExceptions()  # Enable exception support
 
@@ -384,10 +385,16 @@ def main():
 
             out_name = base_dir + output_param_fname + '_projected.tif'
 
+            ori_ds = gdal.Open(f)
+            gt1 = ori_ds.GetGeoTransform()
+            pixel_width1 = gt1[1]
+            pixel_height1 = gt1[5]
+            
+
             # force all the paramter files to have the same extent as the input DEM
             subprocess.check_call([estr % (
-                    f, out_name, srs_out.ExportToProj4(), xmin, ymin, xmax, ymax, pixel_width,
-                    pixel_height)], shell=True)
+                    f, out_name, srs_out.ExportToProj4(), xmin, ymin, xmax, ymax, pixel_width1,
+                    pixel_height1)], shell=True)
 
             parameter_files[key]['filename'].append(out_name)  # save the file name if needed for mesher
             parameter_files[key]['file'][i] = gdal.Open(out_name)
@@ -1292,6 +1299,25 @@ def rasterize_elem(raster, feature, key, aggMethod):
             frac_nan_tri = 1.-masked.count()/masked_tri.count()
             if(frac_nan_tri < 0.5):
                output = float(masked_sel.std())
+    elif aggMethod == 'test_gam':
+        masked_sel = masked[masked<0.]
+        if  masked.count() > 0 and masked_sel.count() > 5:
+            frac_nan_tri = 1.-masked.count()/masked_tri.count()
+            if(frac_nan_tri < 0.5):
+               mm = - float(masked_sel.mean())
+               vv = float(masked_sel.var())
+               #print mm,vv,masked_tri.count(),masked.count()
+               ks2 = stats.kstest(-masked_sel.data.flatten(),'gamma',args=(mm**2./vv,0,vv/mm))               
+               output = ks2[1]
+    elif aggMethod == 'test_exp':
+        masked_sel = masked[masked<0.]
+        if  masked.count() > 0 and masked_sel.count() > 1:
+            frac_nan_tri = 1.-masked.count()/masked_tri.count()
+            if(frac_nan_tri < 0.5):
+               mm = - float(masked_sel.mean())
+               vv = float(masked_sel.var())
+               ks2 = stats.kstest(-masked_sel.data.flatten(),'expon',args=(0,mm))               
+               output = ks2[1]
     else:
         print('\n\nError: unknown data aggregation method %s\n\n' % aggMethod)
         exit(-1)
